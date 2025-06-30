@@ -3,6 +3,6 @@ iot first midterm
 ## Author: iOtAndres
 
 ## Parts:
-*Photon2 
-*Wire Cutters
-*Wire
+* Photon2 
+* Wire Cutters
+* Wire
