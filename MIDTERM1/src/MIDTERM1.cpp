@@ -81,7 +81,7 @@ const int Button =S1;
 // led lights 5 total  Sunrise animation
 int sunriseStep = 0;
  const int lastSunriseUpdate = 0;
-bool AmbientPulse;
+int ambientPulse;
 
 int brightness;
 bool lightPower, lightNoPower;
@@ -93,12 +93,22 @@ int color=0;
 const int ambientPulseStart = 0;
 bool pulseIncreasing = true;
 int ambientBrightness = 0;
-
+bool orchestrateSunrise;
 
 // NeoPixel strip light
 const int STRIP_LIGHT_PIN = D2;
 const int stripLightCount = 8;
-// const int HEXCOLOR = FFB764; need to fix
+
+int neoStripLight;
+
+int lightIndex;
+
+const int r = 255, g = 183, b = 76;
+const int fadeInterval = 1000;
+
+
+
+// const int HEXCOLOR = #FFB764; need to fix
 //const int HEXDISPLAY = 0X3C;   need to fix
 Adafruit_NeoPixel stripLights(stripLightCount,SPI1,WS2812B);
 
@@ -122,6 +132,22 @@ unsigned int lastTime= 0;
 const int EBIKE= 3;
 const int TV =2;
 const int MUSIC = 1;
+
+int wemoStart;
+int wemoActive;
+int wemo1Active;
+int wemo1Start;
+
+int nowMillis;
+
+bool enterMode2;
+
+int wemo2Start;
+int wemo2Active;
+
+
+//int now;
+
 
 //timesInADAY
 
@@ -323,128 +349,101 @@ position = lposition;
         }
         return;
       }
- }
+ 
 // Trigger alarm
         if (!alarmTriggered){
             now.hour() == alarmHour;
-            now.minute() == alarmMinute);
+            now.minute() == alarmMinute;
         }
         else { 
           alarmTriggered = true;
-          wemo1Start = nowMillis;
+          // wemo1Start = millis;
           wemo1Active = true;
-          digitalWrite(WEMO1, HIGH);
-          displayMessage("WAKE UP @ alarmset!");
+          digitalWrite(MYWEMO1, HIGH);
+
+          display.setTextSize(1);
+          display.setTextColor(WHITE);
+          display.setCursor(5,0);
+        //display message
+          display.println("WAKE UP @ %i!");
+          display.display();
+          display.clearDisplay();
+
+
         }
-      
-  
+             // Enter Mode 2/wake up mode
+        //!mode2Active 
+        if (alarmTriggered && digitalRead(Button) == HIGH) {
+          digitalWrite(neoStripLight, HIGH);
+
+        }
+        
+        // Sunrise and ambient effects
+        if (mode2Active and nowMillis - mode2Start <= 300000) {
+          digitalWrite((nowMillis), HIGH);
+          digitalWrite((nowMillis), HIGH);
+        }
+
         // Stop Wemo1 after 5 seconds
         if (wemo1Active and nowMillis - wemo1Start >= 5000) {
           digitalWrite(MYWEMO, LOW);
           wemo1Active = false;
         }
-
-        // Enter Mode 2
-        //!mode2Active 
-        if (alarmTriggered and digitalRead(AWAKE_BUTTON) == LOW) {
-          enterMode2(nowMillis, now);
+         else {(digitalWrite(MYWEMO,HIGH));
         }
-
-        // Sunrise and ambient effects
-        if (mode2Active and nowMillis - mode2Start <= 300000) {
-          orchestrateSunrise(nowMillis);
-          ambientPulse(nowMillis);
-        }
-
         // Turn off Wemo2 after 5 minutes
         if (mode2Active and nowMillis - mode2Start > 300000) {
           digitalWrite(MYWEMO1, LOW);
         }
-
+         else {(digitalWrite(MYWEMO1,HIGH));
+        }
         // Turn off Wemo3 after 1 hour
-        if (mode2Active and nowMillis - wemo3Start > 3600000) {
+        if (mode2Active and nowMillis - wemo2Start > 300000) {
           digitalWrite(MYWEMO2, LOW);
         }
-      
-      //void enterMode2(unsigned long nowMillis, DateTime now)
-      void enterMode2(){
-        mode2Active = true;
-        mode2Start = nowMillis;
-        begin.wemo2 = nowMillis;
-        begin.wemo1 = nowMillis;
-        begin.wemo1 = nowMillis;
-        display.clearDisplay();
-        display.setCursor(0, 0);
-        display.setTextSize(2);
-        display.printf("Time:\n%02d:%02d", now.hour(), now.minute());
-        display.display();
-
-        digitalWrite(MYWEMO1, HIGH);
-        digitalWrite(MYWEMO2, HIGH);
-        digitalWrite(MYWEMO, HIGH);
-        
-       
-
-      void orchestrateSunrise(const int now) {
-        const int r = 255, g = 183, b = 76;
-        const int fadeInterval = 1000;
-        
-        if (now - lastSunriseUpdate >= fadeInterval) {
-        
-
-          if (neolight < 5) {
+          else {(digitalWrite(MYWEMO2,HIGH));
+        }
+        if (neoStripLight < 5) {
             int color = stripLights.Color(r * brightness / 100, g * brightness / 100, b * brightness / 100);
-            stripLights.setPixelColor(lightIndex, color);
+            stripLights.setBrightness(lightIndex);
             stripLights.show();
 
             
             // syncRoomLight(lightIndex, brightness);
           }
-        }
-          lastSunriseUpdate = now;
-        }
-      }
-      void ambientPulse(const int now) {
-        const int r = 255, g = 183, b = 76;
-        const int pulseInterval = 30;
-
-        if (now - begin.ambientPulse >= pulseInterval) {
-          if (pulseIncreasing) {
-            ambientBrightness += 5;
-            if (ambientBrightness >= 100) {
-              ambientBrightness = 100;
-              pulseIncreasing = false;
-            }
-          } else {
-            ambientBrightness -= 5;
-            if (ambientBrightness <= 10) {
-              ambientBrightness = 10;
-              pulseIncreasing = true;
-            }
-          }
-
+    
           int color = stripLights.Color(r * ambientBrightness / 100, g * ambientBrightness / 100, b * ambientBrightness / 100);
           for (int i = 5; i < 8; i++) {
             stripLights.setPixelColor(i, color);
           }
           stripLights.show();
-          ambientPulseStart = now;
+
+          for (int i = 1; i < 6; i++) {
+            setHue(HUEY,ONOFF,color,position,255);
+          }
+          Serial.printf(" HUEY %i, color %i, brightness %i, saturation %i\n",HUEY,color,position,255);
         }
-      }
+      
 
+      //void enterMode2(unsigned long nowMillis, DateTime now)
+      // void enterMode2 (VOID){
+      //   mode2Active = true;
+      //   wemoStart = nowMillis;
+      //   wemo1Start = nowMillis;
+      //   wemo2Start = nowMillis;
+      //   display.clearDisplay();
+      //   display.setCursor(0, 0);
+      //   display.setTextSize(2);
+      //   display.printf("Time:\n%02d:%02d", now.hour(), now.minute());
+      //   display.display();
+
+        // digitalWrite(MYWEMO1, HIGH);
+        // digitalWrite(MYWEMO2, HIGH);
+        // digitalWrite(MYWEMO, HIGH);
+        // }
+        //   lastSunriseUpdate = now;
+      
     
-
-
-
-
-
-
-
-
-
-
-
-
               //   if(!buttonClick){
               //     startHour = 5;
               //     startMin = 45;
@@ -466,10 +465,6 @@ position = lposition;
               //   Serial.printf("%i\n",ENCODER_BUTTON);
               //   }
 
-
-
-
-
               // if(now.minute() >= startMin){
               //       if((now.hour() >= startHour  && now.hour() <= endHour)){
               //         SETTIMEMode1();
@@ -478,7 +473,6 @@ position = lposition;
               //       WOKEUPMode2();
               //     }
               //   }
-
 
               // if (buttonClick){
               //     manual = true;
@@ -499,9 +493,6 @@ position = lposition;
                   
               //   }
               // }
-
-
-
 
               //   //Serial.printf("Start hour: %i\n", startHour);
 
@@ -525,8 +516,6 @@ position = lposition;
                   
               //     }
                 
-                  
-                  
               //     display.printf("%i:%i",startHour, startMin);
               //     display.display();  
               //     }
@@ -598,28 +587,28 @@ void showInfo(){
 
   
     
-void SETTIMEMode1 (){
-  //currentTime = millis();
-  if (( millis() - dayTimer ) > 1000) {
-    dayTimer = millis();
-    Serial.printf("SETTIMEMode1\n");
-    showInfo();
-  }
-  if(BUTTON.isPressed){
-   lightPower = true
-      wemoWrite(EBIKE, HIGH);
-      wemoWrite(TV, HIGH);
-      wemoWrite(MUSIC, HIGH);
-    }
-     else{
-      lightPower = false;
-      wemoWrite(EBIKE, LOW);
-      wemoWrite(TV, LOW);
-      wemoWrite(MUSIC, LOW)
-     }
+// void SETTIMEMode1 (){
+//   //currentTime = millis();
+//   if (( millis() - dayTimer ) > 1000) {
+//     dayTimer = millis();
+//     Serial.printf("SETTIMEMode1\n");
+//     showInfo();
+//   }
+//   if(Button==HIGH){
+//    lightPower = true;
+//       wemoWrite(EBIKE, HIGH);
+//       wemoWrite(TV, HIGH);
+//       wemoWrite(MUSIC, HIGH);
+//     }
+//      else{
+//       lightPower = false;
+//       wemoWrite(EBIKE, LOW);
+//       wemoWrite(TV, LOW);
+//       wemoWrite(MUSIC, LOW)
+//      }
     // Serial.printf("Heater ON\nFan OFF\n");  
     // count3++;
-    }
+    // }
   
 
   void WOKEUPMode2(){
