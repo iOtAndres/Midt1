@@ -37,74 +37,66 @@ Adafruit_SSD1306 display(OLED_RESET);
 const int HEXADDY = 0x3C;
 
 
-// Encoder
-const int ENCODER_A = D8;
-const int ENCODER_B = D9;
-Encoder myEnc(ENCODER_A, ENCODER_B);
-const int ENCODER_BUTTON = D4;
-float y;
-int freq;
-int position;
-int lposition;
+  // Encoder
+  const int ENCODER_A = D8;
+  const int ENCODER_B = D9;
+  Encoder myEnc(ENCODER_A, ENCODER_B);
+  const int ENCODER_BUTTON = D4;
+  float y;
+  int freq;
+  int position;
+  int lposition;
 
+    // RTC
+    RTC_DS1307 rtc; 
 
-// RTC
-RTC_DS1307 rtc; // FIXME
+    // Alarm state
+    bool alarmSet = false;
+    bool alarmTriggered = false;
+    bool mode2Active = false;
+    int alarmHour;
+    int alarmMinute;
 
-// Alarm state
-bool alarmSet = false;
-bool alarmTriggered = false;
-bool mode2Active = false;
-int alarmHour;
-int alarmMinute;
+    DateTime now;
 
-DateTime now;
-//DateTime daysOfTheWeek("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday");
-//code from ddavis
-//char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+    char timeInADay[12][24] = {"1am", "2am", "3am", "4am", "5am", "6am", "7am,", "8am", "9am", "10am", "11am,", "12am"};
 
-char timeInADay[12][24] = {"1am", "2am", "3am", "4am", "5am", "6am", "7am,", "8am", "9am", "10am", "11am,", "12am"};
+    float dayTimer;
+    float lightTimer;
+    int startHour = 5, endHour = 6, startMin = 45, endMin = 0;
 
+                // Buttons   
+                Button AWAKE_BUTTON (S1);
+                const int Button =S1;
+                const int REDLED = (D6);
+                // hue lights = 5
+                // led lights 5 total  Sunrise animation
+                int sunriseStep = 0;
+                const int lastSunriseUpdate = 0;
+                int ambientPulse;
 
-//float lastSecond, lastMinute, lastDaySecond, lastNightSecond; 
+                int brightness;
+                bool lightPower, lightNoPower;
 
-float dayTimer;
-float lightTimer;
-int startHour = 5, endHour = 6, startMin = 45, endMin = 0;
+                int HUEY;
 
+                //have hue 1-3 power on at same time neeed to fix or add to make sur eit works
+                int color=0;
+                const int ambientPulseStart = 0;
+                bool pulseIncreasing = true;
+                int ambientBrightness = 0;
+                bool orchestrateSunrise;
 
-// Buttons   
-Button AWAKE_BUTTON (S1);
-const int Button =S1;
+                // NeoPixel strip light
+                const int STRIP_LIGHT_PIN = D2;
+                const int stripLightCount = 8;
 
-// hue lights = 5
-// led lights 5 total  Sunrise animation
-int sunriseStep = 0;
- const int lastSunriseUpdate = 0;
-int ambientPulse;
+                int neoStripLight;
 
-int brightness;
-bool lightPower, lightNoPower;
-//=1; 
-int HUEY;
-//= 2;
-//have hue 1-3 power on at same time
-int color=0;
-const int ambientPulseStart = 0;
-bool pulseIncreasing = true;
-int ambientBrightness = 0;
-bool orchestrateSunrise;
+                int lightIndex;
 
-// NeoPixel strip light
-const int STRIP_LIGHT_PIN = D2;
-const int stripLightCount = 8;
-
-int neoStripLight;
-
-int lightIndex;
-
-const int r = 255, g = 183, b = 76;
-const int fadeInterval = 1000;
+                const int r = 255, g = 183, b = 76;
+                const int fadeInterval = 1000;
 
 
 
@@ -133,28 +125,23 @@ const int EBIKE= 3;
 const int TV =2;
 const int MUSIC = 1;
 
+bool enterMode2;
 int wemoStart;
 int wemoActive;
 int wemo1Active;
 int wemo1Start;
-
 int nowMillis;
-
-bool enterMode2;
-
 int wemo2Start;
 int wemo2Active;
 
-
-//int now;
-
-
-//timesInADAY
 
 void testdrawcircle(void);
 void startscrollright(void);
 
 
+
+// Vibration motor
+const int VIBRATION_PIN = D7;
 
 void setup() {
 
@@ -166,11 +153,12 @@ void setup() {
   //when wifi is connected or boot up screen leds turn on so = (led,high)
   WiFi.connect();
   while(WiFi.connecting()) {
+  digitalWrite(REDLED, HIGH);
     Serial.printf(".");
   }
   Serial.printf("\n\n");
 
-  
+
   //boot up screen
 display.begin(SSD1306_SWITCHCAPVCC, HEXADDY);
 display.display(); // show splashscreen
@@ -210,31 +198,11 @@ display.clearDisplay();
   delay(2000);
   display.clearDisplay();
 
-  //manual menu
-
-  // if (ENCODER_BUTTON.isClicked){
-  //    switch (timesInADAY);
-  //    0=ENCODER_BUTTON;
-  
-  // TIME()
-  // display.setTextSize(1);
-  // display.setTextColor(WHITE);
-  // display.setCursor(0,0);
-  // display.printf("THRESHOLD VALUES\n");
-
-
-
   pinMode(ENCODER_BUTTON, INPUT_PULLUP);
   pinMode(Button, INPUT);
+  pinMode(VIBRATION_PIN, OUTPUT);
+  digitalWrite(VIBRATION_PIN, LOW);
 
-   //pinMode(ONWEMO1,ONWEMO2,ONWEMO3, OUTPUT);
-  // digitalWrite(ONWEMO1,ONWEMO2,ONWEMO3,LOW);
-  //     digitalWrite(unsigned int, LOW);
-  // // pinMode(HUEY1,HUEY2,HUEY3, HUEY4,HUEY5, OUTPUT);
-  //   digitalWrite(HUEY1,HUEY2,HUEY3, HUEY4,HUEY5,LOW);
-
-
-  //display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
   stripLights.begin();
   stripLights.setBrightness(0);
   stripLights.show();
@@ -252,128 +220,87 @@ display.clearDisplay();
           Serial.println("Couldn't find RTC");
           while (1);
           }
-
            if (rtc.begin()) {
           Serial.println("RTC lost power, lets set the time!");
            // following line sets the RTC to the date & time this sketch was compiled
           rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-           // This line sets the RTC with an explicit date & time, for example to set
-          // January 21, 2014 at 3am you would call:
-          // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
           }
-        //  if (buttonClick = false){
-        // mywemoWrite(MUSIC, LOW);
-        // mywemoWrite(TV, LOW);
-        // mywemoWrite(EBIKE, LOW);
-          
 }
+
 
  void loop() {
 //program alarm
+  // Function declaration
+void checkAlarm(RTC_DS1307 rtc, int alarmHour, int alarmMinute, bool &alarmTriggered);
 
-now = rtc.now();
+  if (alarmSet) {
+   checkAlarm;
+ }
+  }
 
-freq = myEnc.read()/4;
-if (freq <1){
-freq= 1;
+
+void setAlarm() {
+int position = 0;
+int lastPosition = -1;
+ while (true) {
+ position = myEnc.read() / 4; // Adjust for encoder resolution
+ if (position != lastPosition) {
+ lastPosition = position;
+ display.clearDisplay(); 
+ display.setCursor(0, 0);
+ display.print("Set Alarm: ");
+ display.print(position % 12 + 1); // 1-12 hours
+ display.print(":30"); // Fixed minutes for simplicity
+ display.display();
+ }
+ if (digitalRead(ENCODER_BUTTON) == LOW) {
+ alarmHour = position % 12 + 1;
+ alarmMinute = 30;
+ alarmSet = true;
+ display.clearDisplay();
+ display.setCursor(0, 0);
+ display.print("Alarm set for ");
+ display.print(alarmHour);
+ display.print(":");
+ display.print(alarmMinute);
+ display.display();
+ delay(2000);
+ display.clearDisplay();
+ break;
+ }
+ }
 }
-if (freq >12){
-freq= 12;
+
+void checkAlarm() {
+ now = rtc.now();
+ if (now.hour() == alarmHour && now.minute() == alarmMinute) {
+ if (!alarmTriggered) {
+ alarmTriggered = true;
+ display.clearDisplay();
+ display.setCursor(0, 0);
+ display.print("Wake up! It's ");
+ display.print(alarmHour);
+ display.print(":");
+ display.print(alarmMinute);
+ display.display();
+ digitalWrite(VIBRATION_PIN, HIGH); // Turn on the vibration motor
+ }
+ } else {
+ alarmTriggered = false;
+ }
+
+ if (alarmTriggered && digitalRead(Button) == LOW) {
+ alarmTriggered = false;
+ display.clearDisplay();
+ display.setCursor(0, 0);
+ display.print("GOOD MORNING");
+ display.display();
+ delay(2000);
+ display.clearDisplay();
+ digitalWrite(VIBRATION_PIN, LOW); // Turn off the vibration motor }
 }
 
-position = myEnc.read();
-
-
-//set encoder to a poition
-if (position != lposition){
-  //! not equal
-//Serial.printf("%i/n", position);
-position = lposition;
-}
-
-// t = millis() /1000.0;
-
-// y=127.5*sin(2*M_PI*freq*t)+127.5;
-// // so we sub t in the formula and have frequency in 
-// analogWrite(BLUELED, y, 50000.0);
-
-
-
-        // if (HUEY <1){
-        // HUEY= 1;
-        // }
-        // if (HUEY >6){
-        // HUEY = 6;
-        // }
-
-
-        // if (MYWEMO <1){
-        // MYWEMO= 1;
-        // }
-        // if (MYWEMO >3){
-        // MYWEMO = 3;
-        // }
-
-        // if (stripLightCount >8){
-        // stripLightCount = 8;
-        // }
-
-
-// pixel.setPixelColor(i, rcRed, rcGreen, rcBlue);
-// pixel.show();
-// pixel.clear();
-
-
-//   if (ENCODER_BUTTON.isClicked()){
-//     //set time
-//     if(now.minute() >= startMin){
-//       if((now.hour() >= startHour  && now.hour() <= endHour)){
-//         SETTIMEMode1();
-//     }
-    
-
- // Set alarm time with encoder
-      if (!alarmSet) {
-        const int position = myEnc.read() / 4;
-        alarmHour = constrain(5 + (position / 12), 5, 8);
-        alarmMinute = (position % 12) * 5;
-
-        if (digitalRead(ENCODER_BUTTON) == LOW) {
-          alarmSet = true;
-          display.clearDisplay();
-          display.setCursor(0, 0);
-          display.setTextSize(1);
-          display.printf("Alarm Set:\n%02d, AM", alarmHour, alarmMinute);
-          display.display();
-          delay(1000);
-        }
-        return;
-      }
- 
-// Trigger alarm
-        if (!alarmTriggered){
-            now.hour() == alarmHour;
-            now.minute() == alarmMinute;
-        }
-        else { 
-          alarmTriggered = true;
-          // wemo1Start = millis;
-          wemo1Active = true;
-          digitalWrite(MYWEMO1, HIGH);
-
-          display.setTextSize(1);
-          display.setTextColor(WHITE);
-          display.setCursor(5,0);
-        //display message
-          display.println("WAKE UP @ %i!");
-          display.display();
-          display.clearDisplay();
-
-
-        }
-             // Enter Mode 2/wake up mode
-        //!mode2Active 
-        if (alarmTriggered && digitalRead(Button) == HIGH) {
+if (alarmTriggered && digitalRead(Button) == HIGH) {
           digitalWrite(neoStripLight, HIGH);
 
         }
@@ -422,148 +349,9 @@ position = lposition;
             setHue(HUEY,ONOFF,color,position,255);
           }
           Serial.printf(" HUEY %i, color %i, brightness %i, saturation %i\n",HUEY,color,position,255);
-        }
-      
 
-      //void enterMode2(unsigned long nowMillis, DateTime now)
-      // void enterMode2 (VOID){
-      //   mode2Active = true;
-      //   wemoStart = nowMillis;
-      //   wemo1Start = nowMillis;
-      //   wemo2Start = nowMillis;
-      //   display.clearDisplay();
-      //   display.setCursor(0, 0);
-      //   display.setTextSize(2);
-      //   display.printf("Time:\n%02d:%02d", now.hour(), now.minute());
-      //   display.display();
-
-        // digitalWrite(MYWEMO1, HIGH);
-        // digitalWrite(MYWEMO2, HIGH);
-        // digitalWrite(MYWEMO, HIGH);
-        // }
-        //   lastSunriseUpdate = now;
-      
-    
-              //   if(!buttonClick){
-              //     startHour = 5;
-              //     startMin = 45;
-              //     endHour = 6;
-              //     endMin = 00; 
-              //     manual = false;
-              //   }
-
-              // if (BUTTON.isClicked()){
-
-                  
-              //     (HUEY, HIGH);
-              //     pixel.show();
-              //     pixel.clear();
-              //     (strip)
-              //     (MYWEMO, HIGH);
-              //     MYWEMO++;
-              //   //buttonClick = !buttonClick;
-              //   Serial.printf("%i\n",ENCODER_BUTTON);
-              //   }
-
-              // if(now.minute() >= startMin){
-              //       if((now.hour() >= startHour  && now.hour() <= endHour)){
-              //         SETTIMEMode1();
-              //     }
-              //     if((now.hour() < startHour) || (now.hour() > endHour)){
-              //       WOKEUPMode2();
-              //     }
-              //   }
-
-              // if (buttonClick){
-              //     manual = true;
-              //     //count2 = 0;
-              //     //currentTime = millis();
-              //     // while(count2 < 1){
-              //     //   Serial.printf("in the while loop");
-              //     //   goManual();
-              //     //   count2++;
-              //     // }
-              //     if(now.minute() >= startMin){
-              //       if((now.hour() >= startHour  && now.hour() <= endHour)){
-              //         SETTIMEMode1();
-              //     }
-              //     if((now.hour() < startHour) || (now.hour() > endHour)){
-              //       WOKEUPMode2();
-              //     }
-                  
-              //   }
-              // }
-
-              //   //Serial.printf("Start hour: %i\n", startHour);
-
-              // void goManual(){
-              //     //int myenc[500,800];
-              //       int twice = 0;
-              //     while(twice < 2){
-              //       //count = 0;
-              //       display.clearDisplay();
-              //       display.setCursor(0,0);
-              //       display.setTextSize(2);
-              //       display.printf("  MANUAL");
-              //       display.setTextSize(1);
-              //       if(twice == 0){
-              //         display.printf("\n\nEnter the ON time!\nON: ");
-              //       }
-              //       if(twice == 1){
-              //         display.printf("\n\nEnter the OFF time!\nOFF: ");
-              //       }
-              //       display.display();
-                  
-              //     }
-                
-              //     display.printf("%i:%i",startHour, startMin);
-              //     display.display();  
-              //     }
-
-              // void (HUEY, )(){
-              //   if(!lightPower){
-              //     //Serial.printf("Turning Light ON");
-              //     //currentTime = millis();
-              //     if((millis() - lightTimer)> 1000)
-              //     { 
-              //       lightTimer = millis();
-              //       Serial.printf("Light ON\n");
-              //       for (int i = 0; i < 6; i++){
-              //         setHue(lightsOn, true, HueOrange, brightness, 255);
-              //       }
-              //         brightness++;
-              //       if (brightness >= 255){
-              //         brightness = 0;
-              //         lightPower = true;
-              //       }
-              //     }
-              //   }
-              // }
-
-
-              // void lightOff(){
-              //   if(!lightNoPower){
-                  
-              //     Serial.printf("Turning light off\n");
-                  
-              //     //currentTime = millis();
-              //     if((millis() - dayTimer)> 1000){
-                    
-              //       dayTimer = millis();
-              //       Serial.printf("Dimming\n");
-              //       for(int i = 0; i < 6; i++){
-              //         setHue(lightsOn, true, HueViolet, brightness, 255);
-              //       }
-              //         brightness--;
-              //       if(brightness <= 0){
-              //         brightness = 255;
-              //         lightNoPower = true;
-              //       }
-              //     }
-              //   }
-              // }
-
-
+  }
+ 
 void showInfo(){
     //lastSecond = millis();
     display.clearDisplay();
@@ -585,32 +373,6 @@ void showInfo(){
     }
     }
 
-  
-    
-// void SETTIMEMode1 (){
-//   //currentTime = millis();
-//   if (( millis() - dayTimer ) > 1000) {
-//     dayTimer = millis();
-//     Serial.printf("SETTIMEMode1\n");
-//     showInfo();
-//   }
-//   if(Button==HIGH){
-//    lightPower = true;
-//       wemoWrite(EBIKE, HIGH);
-//       wemoWrite(TV, HIGH);
-//       wemoWrite(MUSIC, HIGH);
-//     }
-//      else{
-//       lightPower = false;
-//       wemoWrite(EBIKE, LOW);
-//       wemoWrite(TV, LOW);
-//       wemoWrite(MUSIC, LOW)
-//      }
-    // Serial.printf("Heater ON\nFan OFF\n");  
-    // count3++;
-    // }
-  
-
   void WOKEUPMode2(){
   //currentTime = millis();
   if (( millis() - dayTimer ) > 1000) {
@@ -620,41 +382,6 @@ void showInfo(){
   }
 }
 
-
-  // const float nowMillis = millis();
-
-
-  // calculate a date which is 1 day into the future       do I need this?
-  // DateTime future(now.millis() + 7 * 86400L);
-
-  // Serial.print(" now + 1d: ");      
-  // Serial.print(future.year(), DEC);
-  // Serial.print('/');
-  // Serial.print(future.month(), DEC);
-  // Serial.print('/');
-  // Serial.print(future.day(), DEC);
-  // Serial.print(' ');
-  // Serial.print(future.hour(), DEC);
-  // Serial.print(':');
-  // Serial.print(future.minute(), DEC);
-  // Serial.print(':');
-  // Serial.print(future.second(), DEC);
-  // Serial.println();
-
-  // Serial.println();
-  // delay(3000);
-
-
- 
-  
-// void displayMessage(String msg) {
-//   display.clearDisplay();
-//   display.setCursor(0, 0);
-//   display.setTextSize(1);
-//   display.println(msg);
-//   display.display();
- 
- 
  void testdrawcircle(void){
   
   for (int16_t i=0; i<display.height(); i+=1) {
