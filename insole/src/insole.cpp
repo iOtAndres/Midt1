@@ -6,254 +6,221 @@
  * https://docs.particle.io/firmware/best-practices/firmware-template/
  */
 
+#include <Adafruit_MQTT.h>
+#include "Adafruit_MQTT/Adafruit_MQTT_SPARK.h"
+#include "Adafruit_MQTT/Adafruit_MQTT.h"
+#include "credentials.h"
 #include "Particle.h"
 #include "neopixel.h"
 #include "Colors.h"
-#include "BME280.h"
-//every 5 seonds temp and pressure data will be 
-//coverted to neo pixels and displayed to an app
+#include "Adafruit_BME280.h"
+#include "Encoder.h"
+#include "Button.h"
 
-//class
-Adafruit_BME280 bme;
-//class 
-IoTTimer relay;
-Adafruit_BME280 bme;
+SYSTEM_MODE(AUTOMATIC);
+SYSTEM_THREAD(ENABLED);
+/************ Global State (you don't need to change this!) ***   ***************/ 
+TCPClient TheClient; 
 
-/************Declare Functions*************/
+// Setup the MQTT client class by passing in the WiFi client and MQTT server and login details. 
+Adafruit_MQTT_SPARK mqtt(&TheClient,AIO_SERVER,AIO_SERVERPORT,AIO_USERNAME,AIO_KEY); 
+
+/****************************** Feeds ***************************************/ 
+// Setup Feeds to publish or subscribe 
+// Notice MQTT paths for AIO follow the form: <username>/feeds/<feedname> 
+Adafruit_MQTT_Subscribe VibeONOFF = Adafruit_MQTT_Subscribe(&mqtt, AIO_USERNAME "/feeds/Vibe on OFF"); 
+Adafruit_MQTT_Publish footTemp = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/footTemp");
+Adafruit_MQTT_Publish footPressure = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/footPressure");
+Adafruit_MQTT_Publish fallAlert = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/fallAlert");
+
+
+//Functions
 void MQTT_connect();
 bool MQTT_ping();
+void subscriptionHandler(const char *event, const char *data);
+void updatePressurePixels();
+void updateTempPixels();
+uint32_t pressureToColor(int pressure);
 
-void HeelTemp();
-void ArchTemp();
-void BallTemp();
-void ToeTemp();
-
-void HeelPress();
-void ArchPress();
-void BallPress();
-void ToePress();
-SYSTEM_MODE(SEMI_AUTOMATIC);
-
-const int PIXELCOUNT = 4;      
+// NeoPixels
+const int PIXELCOUNT = 4;
 Adafruit_NeoPixel pixel(PIXELCOUNT, SPI1, WS2812B);
+int bri = 200;
 
-//neopixel settings
-int bri = 200; 
-int neo;
-int startpixel, endpixel;
-int pixelsLit;
-
-//pressureplate
+// Pressure sensors
 int pressurePinBigToe = A3;
-float fsrValueBigToe;
 int pressurePinBall = A2;
-float fsrValueBall;
 int pressurePinArch = A1;
-float fsrValueArch;
 int pressurePinHeel = A0;
-float fsrValueHeel;
 
-//BME 
-int tempc;
-float tempHeelf, tempArchf, tempBallf, tempToef;
-// float pressPA;
-// float inhg;
-// float humidRH;
-bool status;
-const int HEXADDY = 0x76;
+// // BME280
+// Adafruit_BME280 bme;
+// const int HEXADDY = 0x76;
+// float tempf,
 
-SYSTEM_THREAD(ENABLED);
+// Vibration motor
+int Vibe = D15;
+float frequency;
+int vibrationPWM = 180; // ~28Hz
+
+// Encoder
+const int PINA = D3;
+const int PINB = D4;
+const int SWPIN = D16;
+Encoder myEnc(PINA, PINB);
+Button encButton(SWPIN);
+bool VibeOn = false;
+int lastEncVal = 0;
+
+// Timers
+unsigned long lastPressureTime = 0;
+unsigned long lastTempTime = 0;
+const unsigned long pressureInterval = 5000;
+const unsigned long tempInterval = 7000;
 
 void setup() {
   Serial.begin(9600);
-  pixel.begin();               
-  pixel.setBrightness(bri);    
-  pixel.show(); //clear pixels
-  pixel.clear(); 
-  //getting data from BME280
-  status = bme.begin(HEXADDY);
-  if (status == false) {
-    Serial.printf("BME280 at address 0x%02 X failed to start", HEXADDY);
+  pixel.begin();
+  pixel.setBrightness(bri);
+  pixel.clear();
+  pixel.show();
 
-    relay.startTimer(500);
+//   pinMode(Vibe, OUTPUT);
+//   pinMode(SWPIN, INPUT_PULLUP);
+//  pinMode(Vibe, );
+ pinMode(Vibe, OUTPUT);             // Vibration Sensor
+  //pinSetDriveStrength(D15, DriveStrength::HIGH);
+   // Toggle vibration on button click
+  if (encButton.isClicked()) {
+    analogWrite(Vibe, 180);
+
+    Serial.printf("Vibration on/off %i\n",Vibe);
   }
-  // pinMode(A0,)
+
+ // if (!bme.begin(HEXADDY)) {
+   // Serial.println("BME280 failed to start");
+  //}
+
+  myEnc.write(0);
+    // Setup MQTT subscription
+  mqtt.subscribe(&VibeONOFF);
+    waitFor(Serial.isConnected,15000);
+
+  // String subscriptionName = String::format("%s/%s/", System.deviceID().c_str(), EVENT_NAME);
+  // Particle.subscribe(subscriptionName, subscriptionHandler, MY_DEVICES);
+  // Serial.printf("Subscribing to %s\n", subscriptionName.c_str());
 }
 
 void loop() {
+  unsigned long currentTime = millis();
 
-void HeelTemp();
-void ArchTemp();
-void BallTemp();
-void ToeTemp();
+  // Pressure to NeoPixels every 5 seconds
+  if (currentTime - lastPressureTime >= pressureInterval) {
+    lastPressureTime = currentTime;
+    updatePressurePixels();
+  }
 
-void HeelPress();
-void ArchPress();
-void BallPress();
-void ToePress();
+  // Temperature to NeoPixels every 7 seconds
+  // if (currentTime - lastTempTime >= tempInterval) {
+  //   lastTempTime = currentTime;
+  //   updateTempPixels();
+  // }
 
+  // Toggle vibration on button click
+  if (encButton.isClicked()) {
+    VibeOn = !VibeOn;
+    Serial.printf("Vibration %s\n", VibeOn ? "ON" : "OFF");
+  }
+
+  // Encoder adjusts vibration frequency
+  int encVal = myEnc.read();
+  if (encVal != lastEncVal) {
+    if (encVal < 0) encVal = 0;
+    if (encVal > 100) encVal = 100;
+
+    int rpm = map(encVal, 0, 100, 1200, 2100);
+    vibrationPWM = map(rpm, 1200, 2100, 130, 255);
+    lastEncVal = encVal;
+
+    Serial.printf("Encoder RPM: %i, PWM: %i\n", rpm, vibrationPWM);
+  }
+
+  // Apply vibration
+  analogWrite(Vibe, VibeOn ? vibrationPWM : 0);
+  // analogWrite(Vibe, true);
+  void MQTT_connect();
+bool MQTT_ping();
 }
 
-void HeelTemp() {  
-   //heel temp to neo pixel
-   tempf= ((tempc*9.0/5)+32);//concert c to farenheight
-   Serial.printf("heel tempf =%f \n",tempHeelf); 
-    if (tempHeelf >= 82 && tempHeelf <= 86) {
-      // Turn NeoPixel blue
-      pixels.setPixelColor(0, pixels.Color(RGB_COLOR_BLUE));
-    } 
-    else (tempHeelf >= 86 && tempHeelf <= 90) {
-      // Turn NeoPixel yellow
-      pixels.setPixelColor(0, pixels.Color(RGB_COLOR_YELLOW));
-    } 
-    else (tempHeelf >= 90 && tempHeelf <= 94) {
-      // Turn NeoPixel red
-      pixels.setPixelColor(0, pixels.Color(RGB_COLOR_RED));
-    }
-  pixels.show();
-  delay(100); // Sample every 100ms
 
 
-}
-void ArchTemp() {
-  //arch temp to neo pixel
-   tempf= ((tempc*9.0/5)+32);//concert c to farenheight
-   Serial.printf("arch tempf =%f \n",tempArchf); 
-    if (tempArchf >= 82 && tempArchf <= 86) {
-      // Turn NeoPixel blue
-      pixels.setPixelColor(0, pixels.Color(RGB_COLOR_BLUE));
-    } 
-    else (tempArchf >= 86 && tempArchf <= 90) {
-      // Turn NeoPixel yellow
-      pixels.setPixelColor(0, pixels.Color(RGB_COLOR_YELLOW));
-    } 
-    else (tempArchf >= 90 && tempArchf <= 94) {
-      // Turn NeoPixel red
-      pixels.setPixelColor(0, pixels.Color(RGB_COLOR_RED));
-    }
-  pixels.show();
-  delay(100); // Sample every 100ms
+// Pressure sensor to NeoPixel mapping
+void updatePressurePixels() {
+  int heel = analogRead(pressurePinHeel);
+  int arch = analogRead(pressurePinArch);
+  int ball = analogRead(pressurePinBall);
+  int toe = analogRead(pressurePinBigToe);
 
+  pixel.setPixelColor(0, pressureToColor(heel));
+  pixel.setPixelColor(1, pressureToColor(arch));
+  pixel.setPixelColor(2, pressureToColor(ball));
+  pixel.setPixelColor(3, pressureToColor(toe));
+  pixel.show();
 
-}
-void BallTemp() {
-  //ball temp to neo pixel
-   tempf= ((tempc*9.0/5)+32);//concert c to farenheight
-   Serial.printf("ball tempf =%f \n",tempBallf); 
-    if (tempBallf >= 82 && tempBallf <= 86) {
-      // Turn NeoPixel blue
-      pixels.setPixelColor(0, pixels.Color(RGB_COLOR_BLUE));
-    } 
-    else (tempBallf >= 86 && tempBallf <= 90) {
-      // Turn NeoPixel yellow
-      pixels.setPixelColor(0, pixels.Color(RGB_COLOR_YELLOW));
-    } 
-    else (tempBallf >= 90 && tempBallf <= 94) {
-      // Turn NeoPixel red
-      pixels.setPixelColor(0, pixels.Color(RGB_COLOR_RED));
-    }
-  pixels.show();
-  delay(100); // Sample every 100ms
-
-}
-void ToeTemp()  {
-  //toe temp to neo pixel
-   tempf= ((tempc*9.0/5)+32);//concert c to farenheight
-   Serial.printf("toe tempf =%f \n",tempToef); 
-    if (tempToef >= 82 && tempToef <= 86) {
-      // Turn NeoPixel blue
-      pixels.setPixelColor(0, pixels.Color(RGB_COLOR_BLUE));
-    } 
-    else (tempToef >= 86 && tempToef <= 90) {
-      // Turn NeoPixel yellow
-      pixels.setPixelColor(0, pixels.Color(RGB_COLOR_YELLOW));
-    } 
-    else (tempToef >= 90 && tempToef <= 94) {
-      // Turn NeoPixel red
-      pixels.setPixelColor(0, pixels.Color(RGB_COLOR_RED));
-    }
-  pixels.show();
-  delay(100); // Sample every 100ms
-
-
+  Serial.printf("Heel: %i, Arch: %i, Ball: %i, Toe: %i\n", heel, arch, ball, toe);
 }
 
-void HeelPress(){ //heel pressure to neo pixel
-  fsrValueHeel = analogRead (pressurePinHeel);//read heel pressure 
-  Serial.printf("heel pressure =%f \n",fsrValueHeel); 
-    if (fsrValueHeel >= 0 && fsrValueHeel <= 120) {
-      // Turn NeoPixel blue
-      pixels.setPixelColor(0, pixels.Color(RGB_COLOR_BLUE));
-    } 
-    else (fsrValueHeel >= 120 && fsrValueHeel <= 240) {
-      // Turn NeoPixel yellow
-      pixels.setPixelColor(0, pixels.Color(RGB_COLOR_YELLOW));
-    } 
-    else (fsrValueHeel >= 240 && fsrValueHeel <= 360) {
-      // Turn NeoPixel red
-      pixels.setPixelColor(0, pixels.Color(RGB_COLOR_RED));
-    }
-  pixels.show();
-  delay(100); // Sample every 100ms
-  
+// // BME280 temperature to NeoPixel alert
+// void updateTempPixels() {
+//   float tempC = bme.readTemperature();
+//   tempf = (tempC * 9.0 / 5.0) + 32.0;
+//   Serial.printf("Temp (F): %.2f\n", tempf);
 
+//   uint32_t color = 0;
+//   if (tempf >= 82 && tempf < 86) color = pixel.Color(0, 0, 255);       // Blue
+//   else if (tempf >= 86 && tempf < 90) color = pixel.Color(255, 255, 0); // Yellow
+//   else if (tempf >= 90 && tempf < 94) color = pixel.Color(255, 0, 0);   // Red
+
+//   if (color != 0) {
+//     for (int i = 0; i < PIXELCOUNT; i++) {
+//       pixel.setPixelColor(i, color);
+//     }
+//     pixel.show();
+//   }
+// }
+
+// Pressure value to color
+uint32_t pressureToColor(int pressure) {
+  if (pressure < 120) return pixel.Color(0, 0, 255);         // Blue
+  else if (pressure < 240) return pixel.Color(255, 255, 0);  // Yellow
+  else return pixel.Color(255, 0, 0);                        // Red
 }
-void ArchPress(){  //arch pressure to neo pixel
-  fsrValueArch = analogRead (pressurePinArch);//read heel pressure 
-  Serial.printf("arch pressure =%f \n",fsrValueHeel); 
-    if (fsrValueArch >= 0 && fsrValueArch <= 120) {
-      // Turn NeoPixel blue
-      pixels.setPixelColor(0, pixels.Color(RGB_COLOR_BLUE));
-    } 
-    else (fsrValueArch >= 120 && fsrValueArch <= 240) {
-      // Turn NeoPixel yellow
-      pixels.setPixelColor(0, pixels.Color(RGB_COLOR_YELLOW));
-    } 
-    else (fsrValueArch >= 240 && fsrValueArch <= 360) {
-      // Turn NeoPixel red
-      pixels.setPixelColor(0, pixels.Color(RGB_COLOR_RED));
-    }
-  pixels.show();
-  delay(100); // Sample every 100ms
 
-
+void MQTT_connect() {
+  int8_t ret;
+  if (mqtt.connected()) {
+    return;
+  }
+  Serial.print("Connecting to MQTT... ");
+  while ((ret = mqtt.connect()) != 0) { // connect will return 0 for connected
+       Serial.printf("Error Code %s\n",mqtt.connectErrorString(ret));
+       Serial.printf("Retrying MQTT connection in 5 seconds...\n");
+       mqtt.disconnect();
+       delay(5000);  // wait 5 seconds and try again
+  }
+  Serial.printf("MQTT Connected!\n");
 }
-void BallPress(){  //ball pressure to neo pixel
-  fsrValueBall = analogRead (pressurePinBall);//read heel pressure 
-  Serial.printf("ball pressure =%f \n",fsrValueBall); 
-    if (fsrValueBall >= 0 && fsrValueBall <= 120) {
-      // Turn NeoPixel blue
-      pixels.setPixelColor(0, pixels.Color(RGB_COLOR_BLUE));
-    } 
-    else (fsrValueBall >= 120 && fsrValueBall <= 240) {
-      // Turn NeoPixel yellow
-      pixels.setPixelColor(0, pixels.Color(RGB_COLOR_YELLOW));
-    } 
-    else (fsrValueBall >= 240 && fsrValueBall <= 360) {
-      // Turn NeoPixel red
-      pixels.setPixelColor(0, pixels.Color(RGB_COLOR_RED));
-    }
-  pixels.show();
-  delay(100); // Sample every 100ms
-
-}
-void ToePress(){
-      //big toe pressure to neo pixel
-  fsrValueBigToe = analogRead (pressurePinBigToe);//read heel pressure 
-  Serial.printf("toe pressure =%f \n",fsrValueBigToe); 
-    if (fsrValueBigToe >= 0 && fsrValueBigToe <= 120) {
-      // Turn NeoPixel blue
-      pixels.setPixelColor(0, pixels.Color(RGB_COLOR_BLUE));
-    } 
-    else (fsrValueBigToe >= 120 && fsrValueBigToe <= 240) {
-      // Turn NeoPixel yellow
-      pixels.setPixelColor(0, pixels.Color(RGB_COLOR_YELLOW));
-    } 
-    else (fsrValueBigToe >= 240 && fsrValueBigToe <= 360) {
-      // Turn NeoPixel red
-      pixels.setPixelColor(0, pixels.Color(RGB_COLOR_RED));
-    }
-  pixels.show();
-  delay(100); // Sample every 100ms
-
+bool MQTT_ping() {
+  static unsigned int last;
+  bool pingStatus;
+  if ((millis()-last)>120000) {
+      Serial.printf("Pinging MQTT \n");
+      pingStatus = mqtt.ping();
+      if(!pingStatus) {
+        Serial.printf("Disconnecting \n");
+        mqtt.disconnect();
+      }
+      last = millis();
+  }
+  return pingStatus;
 }
