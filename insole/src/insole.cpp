@@ -13,7 +13,7 @@
 #include "Particle.h"
 #include "neopixel.h"
 #include "Colors.h"
-#include "Adafruit_BME280.h"
+
 #include "Encoder.h"
 #include "Button.h"
 
@@ -29,7 +29,7 @@ Adafruit_MQTT_SPARK mqtt(&TheClient,AIO_SERVER,AIO_SERVERPORT,AIO_USERNAME,AIO_K
 // Setup Feeds to publish or subscribe 
 // Notice MQTT paths for AIO follow the form: <username>/feeds/<feedname> 
 Adafruit_MQTT_Subscribe VibeONOFF = Adafruit_MQTT_Subscribe(&mqtt, AIO_USERNAME "/feeds/Vibe on OFF"); 
-Adafruit_MQTT_Publish footTemp = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/footTemp");
+//Adafruit_MQTT_Publish footTemp = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/footTemp");
 Adafruit_MQTT_Publish footPressure = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/footPressure");
 Adafruit_MQTT_Publish fallAlert = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/fallAlert");
 
@@ -48,15 +48,12 @@ Adafruit_NeoPixel pixel(PIXELCOUNT, SPI1, WS2812B);
 int bri = 200;
 
 // Pressure sensors
-int pressurePinBigToe = A3;
+int pressurePinBigToe = A5;
 int pressurePinBall = A2;
 int pressurePinArch = A1;
 int pressurePinHeel = A0;
 
-// // BME280
-// Adafruit_BME280 bme;
-// const int HEXADDY = 0x76;
-// float tempf,
+
 
 // Vibration motor
 int Vibe = D15;
@@ -85,23 +82,21 @@ void setup() {
   pixel.clear();
   pixel.show();
 
-//   pinMode(Vibe, OUTPUT);
-//   pinMode(SWPIN, INPUT_PULLUP);
+  pinMode(Vibe, OUTPUT);
+  // pinMode(SWPIN, INPUT_PULLUP);
 //  pinMode(Vibe, );
- pinMode(Vibe, OUTPUT);             // Vibration Sensor
+// pinMode(Vibe, OUTPUT);             // Vibration Sensor
   //pinSetDriveStrength(D15, DriveStrength::HIGH);
    // Toggle vibration on button click
   if (encButton.isClicked()) {
-    analogWrite(Vibe, 180);
-
-    Serial.printf("Vibration on/off %i\n",Vibe);
+    analogWrite(VibeOn, 180);
   }
 
  // if (!bme.begin(HEXADDY)) {
    // Serial.println("BME280 failed to start");
   //}
 
-  myEnc.write(0);
+  // myEnc.write(0);
     // Setup MQTT subscription
   mqtt.subscribe(&VibeONOFF);
     waitFor(Serial.isConnected,15000);
