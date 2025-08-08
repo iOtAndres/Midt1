@@ -1,24 +1,22 @@
 /* 
- * Project Insole
+ * Project Press Insole
  * Author: Andres
  * Date: 8/4/2025
  * For comprehensive documentation and examples, please visit:
  * https://docs.particle.io/firmware/best-practices/firmware-template/
  */
-
+#include "Particle.h"
 #include <Adafruit_MQTT.h>
 #include "Adafruit_MQTT/Adafruit_MQTT_SPARK.h"
 #include "Adafruit_MQTT/Adafruit_MQTT.h"
 #include "credentials.h"
-#include "Particle.h"
 #include "neopixel.h"
 #include "Colors.h"
-
 #include "Encoder.h"
 #include "Button.h"
 
 SYSTEM_MODE(AUTOMATIC);
-SYSTEM_THREAD(ENABLED);
+//SYSTEM_THREAD(ENABLED);
 /************ Global State (you don't need to change this!) ***   ***************/ 
 TCPClient TheClient; 
 
@@ -28,10 +26,14 @@ Adafruit_MQTT_SPARK mqtt(&TheClient,AIO_SERVER,AIO_SERVERPORT,AIO_USERNAME,AIO_K
 /****************************** Feeds ***************************************/ 
 // Setup Feeds to publish or subscribe 
 // Notice MQTT paths for AIO follow the form: <username>/feeds/<feedname> 
-Adafruit_MQTT_Subscribe VibeONOFF = Adafruit_MQTT_Subscribe(&mqtt, AIO_USERNAME "/feeds/Vibe on OFF"); 
+Adafruit_MQTT_Subscribe VIBRATION = Adafruit_MQTT_Subscribe(&mqtt, AIO_USERNAME "/feeds/foot-pressure.vibration"); 
 //Adafruit_MQTT_Publish footTemp = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/footTemp");
-Adafruit_MQTT_Publish footPressure = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/footPressure");
-Adafruit_MQTT_Publish fallAlert = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/fallAlert");
+// Adafruit_MQTT_Publish FOOTpressure = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/FOOTpressure");
+Adafruit_MQTT_Publish HeelPressure = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/foot-pressure.heelpressure");
+Adafruit_MQTT_Publish ArchPressure = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/foot-pressure.archpressure");
+// Adafruit_MQTT_Publish BallPressure = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/foot-pressure.archpressure");
+Adafruit_MQTT_Publish ToePressure = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/foot-pressure.toepressure");
+//Adafruit_MQTT_Publish fallAlert = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/fallAlert");
 
 
 //Functions
@@ -60,6 +62,24 @@ int Vibe = D15;
 float frequency;
 int vibrationPWM = 180; // ~28Hz
 
+
+// // PWM pins for frequency-controlled motors
+// int heelMotor1 = D1;
+// int heelMotor2 = D2;
+// int archMotor1 = D3;
+// int archMotor2 = D4;
+// int ballMotor1 = D5;
+// int ballMotor2 = D6;
+
+// // Digital pins for simple ON/OFF motors
+// int bigToeMotor = D7;
+// int toeMotor1 = D8;
+// int toeMotor2 = D9;
+
+
+
+
+
 // Encoder
 const int PINA = D3;
 const int PINB = D4;
@@ -73,7 +93,14 @@ int lastEncVal = 0;
 unsigned long lastPressureTime = 0;
 unsigned long lastTempTime = 0;
 const unsigned long pressureInterval = 5000;
-const unsigned long tempInterval = 7000;
+// const unsigned long tempInterval = 7000;
+
+
+unsigned int last, lastTime;
+float subValue,pubHEELValue ,pubARCHValue, pubBALLValue ,pubTOEValue;
+// float yellow;
+int VibebuttonState;
+bool onOFF;
 
 void setup() {
   Serial.begin(9600);
@@ -83,6 +110,21 @@ void setup() {
   pixel.show();
 
   pinMode(Vibe, OUTPUT);
+
+  
+// // Set PWM pins
+//   pinMode(heelMotor1, OUTPUT);
+//   pinMode(heelMotor2, OUTPUT);
+//   pinMode(archMotor1, OUTPUT);
+//   pinMode(archMotor2, OUTPUT);
+//   pinMode(ballMotor1, OUTPUT);
+//   pinMode(ballMotor2, OUTPUT);
+
+//   // Set digital pins
+//   pinMode(bigToeMotor, OUTPUT);
+//   pinMode(toeMotor1, OUTPUT);
+//   pinMode(toeMotor2, OUTPUT);
+
   // pinMode(SWPIN, INPUT_PULLUP);
 //  pinMode(Vibe, );
 // pinMode(Vibe, OUTPUT);             // Vibration Sensor
@@ -98,7 +140,7 @@ void setup() {
 
   // myEnc.write(0);
     // Setup MQTT subscription
-  mqtt.subscribe(&VibeONOFF);
+  mqtt.subscribe(&VIBRATION);
     waitFor(Serial.isConnected,15000);
 
   // String subscriptionName = String::format("%s/%s/", System.deviceID().c_str(), EVENT_NAME);
@@ -107,6 +149,75 @@ void setup() {
 }
 
 void loop() {
+MQTT_connect();
+MQTT_ping();
+
+// this is our 'wait for incoming subscription packets' busy subloop 
+  Adafruit_MQTT_Subscribe *subscription;
+  while ((subscription = mqtt.readSubscription(1000))) {
+    if (subscription == &VIBRATION) {
+    VibebuttonState = atof((char *)VIBRATION.lastread);
+     
+      if (VibebuttonState == 1){
+
+      digitalWrite(Vibe,HIGH);
+      
+      }
+      if (VibebuttonState ==0){
+       digitalWrite(Vibe,LOW);
+      
+      }
+    }
+  }
+if((millis()-lastTime > 10000)) {
+    if(mqtt.Update()) {
+
+      pubHEELValue = analogRead(pressurePinHeel);
+      HeelPressure.publish(pubHEELValue);
+      Serial.printf("Publishing HEEL%f \n",pubHEELValue); 
+      pubARCHValue = analogRead(pressurePinArch);
+      ArchPressure.publish(pubHEELValue);
+      Serial.printf("Publishing ARCH %f \n",pubARCHValue); 
+      pubTOEValue = analogRead(pressurePinBigToe);
+      ToePressure.publish(pubTOEValue);
+      Serial.printf("Publishing TOE %f \n",pubTOEValue); 
+      } 
+    lastTime = millis();
+  }
+
+// if((millis()-lastTime > 6000)) {
+//     if(mqtt.Update()) {
+
+//       pubARCHValue = analogRead(pressurePinArch);
+//       ArchPressure.publish(pubHEELValue);
+//       Serial.printf("Publishing ARCH %f \n",pubARCHValue); 
+//       } 
+//     lastTime = millis();
+//   }
+
+
+// if((millis()-lastTime > 6000)) {
+//     if(mqtt.Update()) {
+
+//       pubBALLValue = pressurePinBall;
+//       pubBALLValue.publish(pubHEELValue);
+//       Serial.printf("Publishing BALL %f \n",pubBALLValue); 
+//       } 
+//     lastTime = millis();
+//   }
+
+// if((millis()-lastTime > 6000)) {
+//     if(mqtt.Update()) {
+
+//       pubTOEValue = analogRead(pressurePinBigToe);
+//       ToePressure.publish(pubTOEValue);
+//       Serial.printf("Publishing TOE %f \n",pubTOEValue); 
+//       } 
+//     lastTime = millis();
+//   }
+//   }
+
+
   unsigned long currentTime = millis();
 
   // Pressure to NeoPixels every 5 seconds
@@ -143,8 +254,7 @@ void loop() {
   // Apply vibration
   analogWrite(Vibe, VibeOn ? vibrationPWM : 0);
   // analogWrite(Vibe, true);
-  void MQTT_connect();
-bool MQTT_ping();
+
 }
 
 
