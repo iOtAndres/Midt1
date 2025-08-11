@@ -3,11 +3,11 @@
  * Author: Andres
  * Date: 8/4/2025
  */
+#include "Particle.h"
 
 #include <Adafruit_MQTT.h>
 #include "Adafruit_MQTT/Adafruit_MQTT_SPARK.h"
 #include "credentials.h"
-#include "Particle.h"
 #include "Encoder.h"
 #include "Button.h"
 
@@ -15,7 +15,7 @@
 #include "Adafruit_SSD1306.h"
 
 SYSTEM_MODE(AUTOMATIC);
-SYSTEM_THREAD(ENABLED);
+// SYSTEM_THREAD(ENABLED);
 
 // MQTT Setup
 TCPClient TheClient;
@@ -25,7 +25,7 @@ Adafruit_MQTT_Subscribe VIBRATION = Adafruit_MQTT_Subscribe(&mqtt, AIO_USERNAME 
 // Function declarations
 void MQTT_connect();
 bool MQTT_ping();
-void subscriptionHandler(const char *event, const char *data);
+// void subscriptionHandler(const char *event, const char *data);
 void handleEncoderClick();
 void handleEncoderRotation();
 void updateVibration(int mode);
@@ -43,16 +43,14 @@ const int PINB = D4;
 const int SWPIN = D16;
 Encoder myEnc(PINA, PINB);
 Button encButton(SWPIN);
+bool VibeOn = false;
 
 // Vibration motor pins
 int heelMotor1 = D1;
-int heelMotor2 = D2;
 int archMotor1 = D5;
 int archMotor2 = D6;
 int ballMotor1 = D7;
-int ballMotor2 = D8;
 int toeMotor1  = D9;
-int toeMotor2  = D10;
 
 // PWM values per zone
 int heelPWM = 180;
@@ -72,13 +70,10 @@ Serial.begin(9600);
   waitFor(Serial.isConnected, 10000);
 
   pinMode(heelMotor1, OUTPUT);
-  pinMode(heelMotor2, OUTPUT);
   pinMode(archMotor1, OUTPUT);
   pinMode(archMotor2, OUTPUT);
   pinMode(ballMotor1, OUTPUT);
-  pinMode(ballMotor2, OUTPUT);
   pinMode(toeMotor1, OUTPUT);
-  pinMode(toeMotor2, OUTPUT);
 
   mqtt.subscribe(&VIBRATION);
 
@@ -93,12 +88,16 @@ Serial.begin(9600);
   display.display();
   delay(2000);
   display.clearDisplay();
+
+   if (encButton.isClicked()) {
+    analogWrite(VibeOn, 100);
+  }
 }
 
 
 void loop() {
-  MQTT_connect();
-
+MQTT_connect();
+MQTT_ping();
   Adafruit_MQTT_Subscribe *subscription;
   while ((subscription = mqtt.readSubscription(1000))) {
     if (subscription == &VIBRATION) {
@@ -122,6 +121,19 @@ void loop() {
     handleEncoderClick();
     handleEncoderRotation();
   }
+// }
+
+if (encButton.isClicked()) {
+    VibeOn = !VibeOn;
+    Serial.printf("Vibration %s\n", VibeOn ? "ON" : "OFF");
+  }
+    // Apply vibration
+  analogWrite(heelMotor1, VibeOn ? heelPWM : 0);
+  analogWrite(archMotor1, VibeOn ? archPWM : 0);
+  analogWrite(archMotor2, VibeOn ? archPWM : 0);
+  analogWrite(ballMotor1, VibeOn ? ballPWM : 0);
+  analogWrite(toeMotor1, VibeOn ? toePWM : 0);
+  // analogWrite(Vibe, true);
 }
 
 void handleEncoderClick() {
@@ -152,28 +164,21 @@ void handleEncoderRotation() {
 
 void updateVibration(int mode) {
   analogWrite(heelMotor1, 0);
-  analogWrite(heelMotor2, 0);
   analogWrite(archMotor1, 0);
   analogWrite(archMotor2, 0);
   analogWrite(ballMotor1, 0);
-  analogWrite(ballMotor2, 0);
   digitalWrite(toeMotor1, LOW);
-  digitalWrite(toeMotor2, LOW);
 
   switch (mode) {
     case 1:
       analogWrite(heelMotor1, heelPWM);
-      analogWrite(heelMotor2, heelPWM);
       analogWrite(archMotor1, archPWM);
       analogWrite(archMotor2, archPWM);
       analogWrite(ballMotor1, ballPWM);
-      analogWrite(ballMotor2, ballPWM);
       analogWrite(toeMotor1, toePWM);
-      analogWrite(toeMotor2, toePWM);
       break;
     case 2:
       analogWrite(heelMotor1, heelPWM);
-      analogWrite(heelMotor2, heelPWM);
       break;
     case 3:
       analogWrite(archMotor1, archPWM);
@@ -181,11 +186,9 @@ void updateVibration(int mode) {
       break;
     case 4:
       analogWrite(ballMotor1, ballPWM);
-      analogWrite(ballMotor2, ballPWM);
       break;
     case 5:
       analogWrite(toeMotor1, toePWM);
-      analogWrite(toeMotor2, toePWM);
       break;
     default:
       break;
@@ -209,12 +212,32 @@ void updateOLED(int mode) {
 
 void MQTT_connect() {
   int8_t ret;
-  if (mqtt.connected()) return;
-
-  Serial.print("Connecting to MQTT... ");
-  while ((ret = mqtt.connect()) != 0) {
-    Serial.printf("Failed, code %d. Retrying...\n", ret);
-    delay(5000);
+  // Return if already connected.
+  if (mqtt.connected()) {
+    return;
   }
-  Serial.println("MQTT Connected!");
+  Serial.print("Connecting to MQTT... ");
+  while ((ret = mqtt.connect()) != 0) { // connect will return 0 for connected
+       Serial.printf("Error Code %s\n",mqtt.connectErrorString(ret));
+       Serial.printf("Retrying MQTT connection in 5 seconds...\n");
+       mqtt.disconnect();
+       delay(5000);  // wait 5 seconds and try again
+      
+  }
+  Serial.printf("MQTT Connected!\n");
+}
+
+bool MQTT_ping() {
+  static unsigned int last;
+  bool pingStatus;
+  if ((millis()-last)>120000) {
+      Serial.printf("Pinging MQTT \n");
+      pingStatus = mqtt.ping();
+      if(!pingStatus) {
+        Serial.printf("Disconnecting \n");
+        mqtt.disconnect();
+      }
+      last = millis();
+  }
+  return pingStatus;
 }
