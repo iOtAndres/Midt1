@@ -39,7 +39,7 @@ Adafruit_MQTT_Publish ToePressure = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/
 //Functions
 void MQTT_connect();
 bool MQTT_ping();
-void subscriptionHandler(const char *event, const char *data);
+//void subscriptionHandler(const char *event, const char *data);
 void updatePressurePixels();
 void updateTempPixels();
 uint32_t pressureToColor(int pressure);

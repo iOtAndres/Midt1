@@ -31,16 +31,31 @@ const int PIXELCOUNT = 16;
 Adafruit_NeoPixel pixel(PIXELCOUNT, SPI1, WS2812B);
 //neopixel settings
 int bri = 200; 
-int neo;
+int i;
+//int neo;
+int start;
+int end;
+int segment;
 int startpixel, endpixel;
 int pixelsLit;
-int color;
-int pressureHeel = A0;
+int rcBlue;
+int rcGreen; 
+int rcRed;
+int rColor;
+// int color;
+const int PRESSUREHEEL = A0;
 int pixelON;
+const int PRESSNEO = D2;
 
-float subValue,pubValue;
+int heel;
+// Timers
+unsigned long lastPressureTime = 0;
+const unsigned long pressureInterval = 5000;
+// const unsigned long tempInterval = 7000;
 
-unsigned int last, lastTime ,currentTime;
+
+unsigned int last, lastTime, currentTime;
+float subValue,pubHEELValue;
 
 
 
@@ -56,7 +71,7 @@ const int TIMEZONE = -6;
 const unsigned int UPDATE = 30000;
 // int last;
 
-
+int pressure;
 // Define Constants
 const int RADIONETWORK = 7;    // range of 0-16
 const int SENDADDRESS = 302;   // address of radio to be sent to DONT CHANGE
@@ -71,15 +86,17 @@ float latitude, longitude, altitude;
 
 // Declare Variables 
 float lat, lon, alt;
+int sat;//satellites
 unsigned int lastGPS;//helps with timer moving along
 
 
-void pixelFill(int start, int end,int Color);
+ void pixelFill(int spixel, int epixel, int hexcolor);
 void createEventPayLoad (GeoLocation myGPS);
 void MQTT_connect();
 bool MQTT_ping();
 void onDataReceived(const uint8_t* data, size_t len, const BlePeerDevice& peer, void* context);
-
+void pressureToColor(int pressure);
+void getGPS(float *latitude, float *longitude, float *altitude, int *satellites);//passing thru pointer variables 
 
 // Let Device OS manage the connection to the Particle Cloud
 SYSTEM_MODE(AUTOMATIC);
@@ -120,8 +137,8 @@ void setup() {
 
   pixel.begin();
   pixel.setBrightness(bri);
-  pixel.clear();
   pixel.show();
+  // pixel.clear();
 
 
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // initialize with the I2C addr 0x3D (for the 128x64)
@@ -130,35 +147,77 @@ void setup() {
   delay(500);
   display.clearDisplay();   // clears the screen and buffer
   display.display();
+  //Initialize GPS
+  GPS.begin(0x10);  // The I2C address to use is 0x10, can use i2 scanner, use our address
+  GPS.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);//sets what data we will be sneding to component
+  GPS.sendCommand(PMTK_SET_NMEA_UPDATE_1HZ); //sets rate we send data
+  GPS.sendCommand(PGCMD_ANTENNA);// which antenna
+  delay(1000);//pause
+  GPS.println(PMTK_Q_RELEASE);//gps print data
 }
 
 void loop() {
-   pixelFill(0,neo,red);
+MQTT_connect();
+  MQTT_ping();
+
+  // Get data from GSP unit (best if you do this continuously)
+  GPS.read();//read
+  if (GPS.newNMEAreceived()) {//if recieved
+    if (!GPS.parse(GPS.lastNMEA())) {//if cant parse 
+      return;//repeat returns a 0 or 1 
+    }   
+  }
+
+  if (millis() - lastGPS > UPDATE) {
+    lastGPS = millis(); // reset the timer
+    getGPS(&lat,&lon,&alt,&sat);
+    Serial.printf("\n=================================================================\n");
+    Serial.printf("Lat: %0.6f, Lon: %0.6f, Alt: %0.6f, Satellites: %i\n",lat, lon, alt, sat);//print the valuse here
+    Serial.printf("=================================================================\n\n");
+     // text display
+    display.clearDisplay(); 
+    display.setTextSize(1);
+    display.setTextColor(WHITE);
+    display.setCursor(0,0);
+    display.printf("Lat: %0.6f, Lon: %0.6f, Alt: %0.6f, Satellites: %i\n",lat, lon, alt, sat);
+    display.display();
+  }
+rcRed = random (250);
+rcGreen = random (250);
+rcBlue = random (250);
+pubHEELValue = analogRead(PRESSUREHEEL);
   currentTime = millis () ;
 if( currentTime - lastTime > 10000 ) {
 	lastTime = millis();
+
   float lon;
   float lat;
    Serial.printf("random coordinates %f : %f \n",lon,lat); 
       } 
+if(pubHEELValue >0){
+for ( segment = 0; segment <= 15;segment++){
+  start=segment+0;
+  end=start+15;
+  
+  pixelFill(start,end,rainbow[segment]);
+  pixel.show();
+}
+if (PRESSUREHEEL <= 0){
+pixel.clear();
+}
+}
 
-  MQTT_connect();
-  MQTT_ping();
 
 
-  // Adafruit_MQTT_Subscribe *subscription;
-  // while ((subscription = mqtt.readSubscription(100))) {
-  //   if (subscription == &subFeed) {
-  //   }
-  // }
 
   if((millis()-lastTime > 10000)) {
     if(mqtt.Update()) {
-      myLoc.lon = random(-10665114,-10610000)/100000.0;
-      myLoc.lat = random(3508449,3205421)/100000.0;
+      // myLoc.lon = (-10665114,-10610000)/100000.0;
+      // myLoc.lat = (3508449,3205421)/100000.0;
       lastTime = millis();
-      Serial.printf("random Location : lon %f, lat %f\n", myLoc.lon, myLoc.lat); 
+  
      createEventPayLoad (myLoc);
+         Serial.printf("mylocation : lon %f, lat %f\n", myLoc.lon, myLoc.lat); 
       } 
 }
     // text display
@@ -171,14 +230,24 @@ if( currentTime - lastTime > 10000 ) {
 
 }
 
-void pixelFill(int start, int end, int color){
-  int i;
- for (i = start; i <= end; i++){
-    pixel.clear();
-    pixel.setPixelColor(i,color);
-    pixel.show();
-  }
+void updatePressurePixels() {
+  int heel = analogRead(PRESSUREHEEL);
+
+  pixel.setPixelColor(heel,rColor);
+  pixel.show();
+
+  Serial.printf("Heel: %i\n", heel);
 }
+
+
+void pixelFill(int spixel,int epixel,int hexcolor){
+  int i;
+for (i= start ; i <= end; i++){
+pixel.setPixelColor(i,hexcolor);
+pixel.show();
+}
+}
+
 void createEventPayLoad (GeoLocation myLoc){
 //356 bytes
   JsonWriterStatic <256> jw;
@@ -190,6 +259,17 @@ void createEventPayLoad (GeoLocation myLoc){
   }
 pubFeed.publish (jw.getBuffer());
 }
+
+void pressureToColor(int pressure, int hexcolor) {
+ if (pressure < 0){
+  return pixel.setPixelColor(i,hexcolor);
+pixel.show();
+// //  pixel.setPixelColor(pressure, rcRed, rcGreen, rcBlue);  
+// //     pixel.show();
+//     Serial.printf("pressure: %i, Rcolor: %i\n", pressure, rColor); 
+}
+}
+
 void MQTT_connect() {
   int8_t ret;
   if (mqtt.connected()) {
@@ -204,6 +284,7 @@ void MQTT_connect() {
   }
   Serial.printf("MQTT Connected!\n");
 }
+
 bool MQTT_ping() {
   static unsigned int last;
   bool pingStatus;
@@ -218,6 +299,7 @@ bool MQTT_ping() {
   }
   return pingStatus;
 }
+
 //onDataReceived is used to receive data from Bluefruit Connect App
 void onDataReceived(const uint8_t* data, size_t len, const BlePeerDevice& peer, void* context) {
   uint8_t i;
@@ -232,3 +314,32 @@ void onDataReceived(const uint8_t* data, size_t len, const BlePeerDevice& peer, 
   //Serial.printf("encoder pos: %i\n", currentp);
 }
 //RUN CODE ON SERIAL MONITOR NO RX TO RX THEN GO TEST OUTSIDE  
+void getGPS(float *latitude, float *longitude, float *altitude, int *satellites){
+  int theHour;
+
+  theHour = GPS.hour + TIMEZONE;//time
+  if(theHour < 0) {
+    theHour = theHour + 24;//like military time 
+  }
+    
+  Serial.printf("Time: %02i:%02i:%02i:%03i\n",theHour, GPS.minute, GPS.seconds, GPS.milliseconds);//02i = if variable is one digit it puts 0 in front of it for added placement value
+  Serial.printf("Dates: %02i-%02i-20%02i\n", GPS.month, GPS.day, GPS.year);//added 20 in frono to of year
+  Serial.printf("Fix: %i, Quality: %i",(int)GPS.fix,(int)GPS.fixquality);//how many satelites your in contact with 
+
+  display.clearDisplay();
+  display.printf("Time: %02i:%02i:%02i:%03i\n",theHour, GPS.minute, GPS.seconds, GPS.milliseconds);
+  display.printf("Dates: %02i-%02i-20%02i\n", GPS.month, GPS.day, GPS.year);
+  display.printf("Fix: %i, Quality: %i",(int)GPS.fix,(int)GPS.fixquality);
+  display.clearDisplay();
+  display.display();
+    if (GPS.fix) {//0 or a 1, 1 if you do 0 if you dont. do i get a stong enough signal?
+      *latitude = GPS.latitudeDegrees;//if true point and store data
+      *longitude = GPS.longitudeDegrees; 
+      *altitude = GPS.altitude;
+      *satellites = (int)GPS.satellites;//type casting, force it only on this line as an int
+      // Serial.printf("Lat: %0.6f, Lon: %0.6f, Alt: %0.6f\n",*latitude, *longitude, *altitude);
+      // Serial.printf("Speed (m/s): %0.2f\n",GPS.speed/1.944);
+      // Serial.printf("Angle: %0.2f\n",GPS.angle);
+      // Serial.printf("Satellites: %i\n",*satellites);
+    }
+}

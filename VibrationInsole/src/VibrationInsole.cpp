@@ -15,13 +15,12 @@
 #include "Adafruit_SSD1306.h"
 
 SYSTEM_MODE(AUTOMATIC);
-// SYSTEM_THREAD(ENABLED);
 
 // MQTT Setup
 TCPClient TheClient;
 Adafruit_MQTT_SPARK mqtt(&TheClient, AIO_SERVER, AIO_SERVERPORT, AIO_USERNAME, AIO_KEY);
 Adafruit_MQTT_Subscribe VIBRATION = Adafruit_MQTT_Subscribe(&mqtt, AIO_USERNAME "/feeds/foot-pressure.vibration");
-
+Adafruit_MQTT_Publish pubFeed = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/gps");
 // Function declarations
 void MQTT_connect();
 bool MQTT_ping();
@@ -63,6 +62,7 @@ int clickCount = 1;
 int lastEncVal = 0;
 bool mqttOverride = false;
 
+// SYSTEM_THREAD(ENABLED);
 
 void setup() {
 
